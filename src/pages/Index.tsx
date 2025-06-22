@@ -73,10 +73,10 @@ const Index = () => {
 
       {/* Main Content */}
       <div className="container mx-auto px-4 py-6 grid grid-cols-1 xl:grid-cols-4 gap-6">
-        {/* Map Section - Takes up 3/4 on desktop */}
+        {/* Map Section - Full size on desktop */}
         <div className="xl:col-span-3 space-y-6">
           <Card className="p-0 overflow-hidden shadow-xl border-0 bg-white/90 backdrop-blur-sm">
-            <div className="h-[500px] md:h-[600px] relative">
+            <div className="h-[calc(100vh-200px)] relative">
               <AQIMap selectedLocation={selectedLocation} onLocationChange={setSelectedLocation} />
             </div>
           </Card>
