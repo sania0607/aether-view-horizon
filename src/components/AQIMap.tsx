@@ -1,9 +1,16 @@
 
-import React, { useEffect, useRef, useState } from 'react';
-import mapboxgl from 'mapbox-gl';
-import 'mapbox-gl/dist/mapbox-gl.css';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import React, { useEffect, useState } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
+// Fix for default markers in react-leaflet
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+});
 
 interface Location {
   name: string;
@@ -17,12 +24,53 @@ interface AQIMapProps {
   onLocationChange: (location: Location) => void;
 }
 
-const AQIMap: React.FC<AQIMapProps> = ({ selectedLocation, onLocationChange }) => {
-  const mapContainer = useRef<HTMLDivElement>(null);
-  const map = useRef<mapboxgl.Map | null>(null);
-  const [mapboxToken, setMapboxToken] = useState('');
-  const [showTokenInput, setShowTokenInput] = useState(true);
+// Custom AQI marker component
+const createAQIIcon = (aqi: number) => {
+  const getAQIColor = (aqi: number) => {
+    if (aqi <= 50) return '#00e400'; // Good - Green
+    if (aqi <= 100) return '#ffff00'; // Moderate - Yellow
+    if (aqi <= 150) return '#ff7e00'; // Unhealthy for Sensitive - Orange
+    if (aqi <= 200) return '#ff0000'; // Unhealthy - Red
+    if (aqi <= 300) return '#8f3f97'; // Very Unhealthy - Purple
+    return '#7e0023'; // Hazardous - Maroon
+  };
 
+  const color = getAQIColor(aqi);
+  const textColor = aqi > 150 ? 'white' : 'black';
+  
+  return L.divIcon({
+    html: `<div style="
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background-color: ${color};
+      border: 3px solid white;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: bold;
+      color: ${textColor};
+    ">${aqi}</div>`,
+    className: 'custom-aqi-marker',
+    iconSize: [40, 40],
+    iconAnchor: [20, 20]
+  });
+};
+
+// Component to handle map center changes
+const MapController: React.FC<{ center: [number, number] }> = ({ center }) => {
+  const map = useMap();
+  
+  useEffect(() => {
+    map.setView(center, map.getZoom());
+  }, [center, map]);
+
+  return null;
+};
+
+const AQIMap: React.FC<AQIMapProps> = ({ selectedLocation, onLocationChange }) => {
   // Sample AQI data for different cities
   const aqiLocations = [
     { name: 'San Francisco, CA', lat: 37.7749, lng: -122.4194, aqi: 42 },
@@ -38,106 +86,57 @@ const AQIMap: React.FC<AQIMapProps> = ({ selectedLocation, onLocationChange }) =
   ];
 
   const getAQIColor = (aqi: number) => {
-    if (aqi <= 50) return '#00e400'; // Good - Green
-    if (aqi <= 100) return '#ffff00'; // Moderate - Yellow
-    if (aqi <= 150) return '#ff7e00'; // Unhealthy for Sensitive - Orange
-    if (aqi <= 200) return '#ff0000'; // Unhealthy - Red
-    if (aqi <= 300) return '#8f3f97'; // Very Unhealthy - Purple
-    return '#7e0023'; // Hazardous - Maroon
+    if (aqi <= 50) return '#00e400';
+    if (aqi <= 100) return '#ffff00';
+    if (aqi <= 150) return '#ff7e00';
+    if (aqi <= 200) return '#ff0000';
+    if (aqi <= 300) return '#8f3f97';
+    return '#7e0023';
   };
-
-  const initializeMap = (token: string) => {
-    if (!mapContainer.current) return;
-
-    mapboxgl.accessToken = token;
-    
-    map.current = new mapboxgl.Map({
-      container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/light-v11',
-      center: [selectedLocation.lng, selectedLocation.lat],
-      zoom: 4
-    });
-
-    map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
-
-    map.current.on('load', () => {
-      // Add markers for each location
-      aqiLocations.forEach((location) => {
-        const el = document.createElement('div');
-        el.className = 'aqi-marker';
-        el.style.width = '40px';
-        el.style.height = '40px';
-        el.style.borderRadius = '50%';
-        el.style.backgroundColor = getAQIColor(location.aqi);
-        el.style.border = '3px solid white';
-        el.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
-        el.style.cursor = 'pointer';
-        el.style.display = 'flex';
-        el.style.alignItems = 'center';
-        el.style.justifyContent = 'center';
-        el.style.fontSize = '12px';
-        el.style.fontWeight = 'bold';
-        el.style.color = location.aqi > 150 ? 'white' : 'black';
-        el.innerHTML = location.aqi.toString();
-        
-        el.addEventListener('click', () => {
-          onLocationChange(location);
-        });
-
-        new mapboxgl.Marker(el)
-          .setLngLat([location.lng, location.lat])
-          .addTo(map.current!);
-      });
-    });
-  };
-
-  const handleTokenSubmit = () => {
-    if (mapboxToken.trim()) {
-      setShowTokenInput(false);
-      initializeMap(mapboxToken);
-    }
-  };
-
-  useEffect(() => {
-    return () => {
-      map.current?.remove();
-    };
-  }, []);
-
-  if (showTokenInput) {
-    return (
-      <div className="h-full flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-        <div className="bg-white p-8 rounded-xl shadow-lg max-w-md w-full mx-4">
-          <h3 className="text-xl font-semibold mb-4 text-center">Initialize Map</h3>
-          <p className="text-gray-600 text-sm mb-4 text-center">
-            Please enter your Mapbox public token to enable the interactive map.
-          </p>
-          <p className="text-gray-500 text-xs mb-4 text-center">
-            Get your token at <a href="https://mapbox.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">mapbox.com</a>
-          </p>
-          <div className="space-y-4">
-            <Input
-              type="text"
-              placeholder="pk.eyJ1Ijo..."
-              value={mapboxToken}
-              onChange={(e) => setMapboxToken(e.target.value)}
-              className="w-full"
-            />
-            <Button onClick={handleTokenSubmit} className="w-full">
-              Initialize Map
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="relative w-full h-full">
-      <div ref={mapContainer} className="absolute inset-0" />
-      
+      <MapContainer
+        center={[selectedLocation.lat, selectedLocation.lng]}
+        zoom={4}
+        className="w-full h-full"
+        zoomControl={true}
+      >
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+        
+        <MapController center={[selectedLocation.lat, selectedLocation.lng]} />
+        
+        {aqiLocations.map((location, index) => (
+          <Marker
+            key={index}
+            position={[location.lat, location.lng]}
+            icon={createAQIIcon(location.aqi)}
+            eventHandlers={{
+              click: () => onLocationChange(location)
+            }}
+          >
+            <Popup>
+              <div className="text-center p-2">
+                <h3 className="font-semibold text-lg">{location.name}</h3>
+                <div className="flex items-center justify-center space-x-2 mt-1">
+                  <div 
+                    className="w-4 h-4 rounded-full"
+                    style={{ backgroundColor: getAQIColor(location.aqi) }}
+                  ></div>
+                  <span className="text-xl font-bold">{location.aqi}</span>
+                  <span className="text-gray-600">AQI</span>
+                </div>
+              </div>
+            </Popup>
+          </Marker>
+        ))}
+      </MapContainer>
+
       {/* Legend */}
-      <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg p-4 shadow-lg">
+      <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg p-4 shadow-lg z-[1000]">
         <h4 className="font-semibold text-sm mb-2">AQI Scale</h4>
         <div className="space-y-1 text-xs">
           <div className="flex items-center space-x-2">
@@ -168,7 +167,7 @@ const AQIMap: React.FC<AQIMapProps> = ({ selectedLocation, onLocationChange }) =
       </div>
 
       {/* Current Location Info */}
-      <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg p-4 shadow-lg">
+      <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg p-4 shadow-lg z-[1000]">
         <h3 className="font-semibold text-lg">{selectedLocation.name}</h3>
         <div className="flex items-center space-x-2 mt-1">
           <div 
